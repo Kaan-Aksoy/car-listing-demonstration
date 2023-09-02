@@ -1,0 +1,152 @@
+---
+title: "Used Car Listings on Craigslist"
+author: "Kaan Aksoy"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
+options(scipen = 200)
+```
+```{r load-libraries}
+## Load libraries.
+library(tidyverse)    # To wrangle data efficiently.
+library(modelsummary) # To put out nice tables where needed.
+library(usmap)         # To have map-plots.
+```
+```{r load-and-clean-data}
+df1 <- read_csv("~/Documents/Data/vehicles.csv") %>% 
+  drop_na(., c(model, odometer)) %>% # Remove observations without a car model or no distance.
+  mutate(., state = toupper(state), # Capitalize state abbreviations for future use.
+         manufacturer = str_to_title(manufacturer),
+         model = str_to_title(model)) %>% # Capitalize manufacturer names.
+  filter(., year >= 2001 & year <= 2021) # Limit the temporal frame of the data.
+```
+
+# The Data
+
+The data I analyzed consists of 426,880 observations and 26 variables across a wide range of years. Due to missing values and the need to restrict the temporal scale of the analysis, however, the functional number of observations decreases to 393,107. The temporal scale of the analysis is restricted to 2002-2021. The end date is chosen as there are no usable data in 2022.
+
+Taken together, the number of observations within this temporal frame is more than sufficient to build predictive models to forecast future sales.
+
+# Annual Listings
+
+Initially, I look at a simple trend of second-hand car listings over the years.
+
+```{r plot-1, include=TRUE, fig.width=6, fig.height=4}
+df1 %>% 
+  group_by(., year) %>% 
+  summarise(., yearlylistings = n()) %>% # Sum the count of observations by year.
+  ungroup(.) %>% 
+  ggplot(., aes(x = year,
+                y = yearlylistings)) +
+  geom_line(colour = "#FFD000", lwd = 0.75) + # Doll the line up.
+  scale_y_continuous(labels = scales::comma,  # Thousands separator isn't default; add it.
+                                              # This depends on the `scales` package.
+                     breaks = seq(0, 40000, 5000)) + # Add more breaks to make the graph clearer.
+  scale_x_continuous(breaks = seq(2001, 2021, 1)) +  # Add all the years for the same reason.
+  labs(x = "Year",
+       y = "Number of listings",
+       title = "Number of second-hand car listings by year") +
+  theme_minimal() +
+  theme(panel.grid.minor.x = element_blank(), # Remove some lines to make the graph clearer.
+        panel.grid.minor.y = element_blank(), # Same.
+        axis.text.x = element_text(angle = 60, vjust = 0.6, hjust = 0.5)) # Doll it up a bit.
+```
+
+We see that the number of listings trends upwards through the years. The effects of the 2008 Global Financial Crisis and the 2019-2021 Coronavirus Pandemic are visible as overall consumption decreased during these periods.
+
+# Distribution of listings by state in 2021
+
+We may be interested in seeing the distribution of listings by state in the most recent year for which we have data, which is 2021. The plot below shows this distribution by U.S. state.
+
+```{r us-map-plot-plot-2, include=TRUE, fig.width=6, fig.height=4}
+df1 %>% 
+  filter(., year == 2021) %>% 
+  group_by(., state) %>% 
+  summarise(., statelistings = n()) %>% 
+  ungroup(.) %>% 
+  plot_usmap(data = ., values = "statelistings") +
+  scale_fill_continuous(low = "white", high = "darkgreen",
+                        name = "Car listings", label = scales::comma) +
+  labs(title = "Used car listings throughout the United States in 2021",
+       caption = "Note: North Dakota has no data available.")
+```
+
+The map above shows the distribution of used car listings on craigslist by state. Of course, there is a significant caveat to this data and the way it is displayed: the number of car listings can be expected to correlate directly with the population of a state. California, then, having the most car listings in 2021 does not necessarily mean that it has the most competition to sell a car. Instead, it simply points to California having more people in it, and therefore having a larger second-hand car market.
+
+# Car manufacturers by listing count
+
+```{r car-manufacturers-count-plot-3, include=TRUE}
+df1 %>% 
+  group_by(., manufacturer) %>% 
+  summarise(., listingcount = n()) %>% 
+  ungroup(.) %>% 
+  na.omit(.) %>% 
+  ggplot(., aes(x = reorder(manufacturer, -listingcount), # Order by count instead of alphabetically.
+                y = listingcount)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(breaks = seq(0, 75000, 5000), labels = scales::comma) +
+  scale_x_discrete(labels = c("Gmc" = "GMC")) +
+  labs(x = "Manufacturer",
+       y = "Listing count",
+       title = "Listing counts by manufacturer") +
+  theme_minimal() +
+  theme(panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text(angle = 60, vjust = 0.6, hjust = 0.5))
+```
+
+As we might expect, Ford cars have by far the most listings. This is unsurprising even in a used car market: Ford is the most popular car brand among Americans. Therefore, we may want to look at which models Ford sells are most listed in the used car market.
+
+```{r plot-4, include=TRUE}
+df1 %>% 
+  filter(., manufacturer == "Ford") %>% 
+  group_by(., model) %>% 
+  summarise(., listingcount = n()) %>% 
+  ungroup(.) %>% 
+  filter(., listingcount >= 250) %>% # Otherwise, the graph gets too crowded and indecipherable.
+  na.omit(.) %>% 
+  ggplot(., aes(x = reorder(model, -listingcount), # Order by count instead of alphabetically.
+                y = listingcount)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Model",
+       y = "Listing count",
+       title = "Ford listing counts by model",
+       caption = "Graph only includes models which have 250 or more total listings.") +
+  theme_minimal() +
+  theme(panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text(angle = 60, vjust = 0.6, hjust = 0.5))
+```
+We see that the Ford F-150 is, by far, the most listed model. This is, once again, unsurprising: the Ford F-150 is the most popular car in the United States. Seeing this reflected in used car listings is not particularly remarkable.
+
+It should be noted that there are in fact duplicate entries in bar graph for several models of car, such as the F-150 and F-250. This is caused by data entry being done incorrectly, with inconsistent coding. This results in the "F-150" and "F150" being drawn as separate models, while in reality they refer to the same model.
+
+In a real project, this would be taken care of prior to this graph being produced, in the data cleaning and wrangling stage of the document.
+
+# Prices
+
+First, a brief look at the distribution of prices across all listings.
+
+```{r plot-5, include=TRUE}
+df1 %>% 
+  filter(., price != "0") %>% 
+  ggplot(.,
+       aes(x = price)) +
+  geom_density() +
+  geom_vline(aes(xintercept = median(price)), colour = "red") +
+  annotate("text", x = 21000, y = 0.000041, label = "Median") +
+  scale_x_continuous(breaks = seq(0, 100000, 5000), limits = c(0, 100000), labels = scales::comma) +
+  labs(x = "Price ($)",
+       y = "Density",
+       title = "Distribution of car listings by price") +
+  theme_minimal() +
+  theme(panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.x = element_text(angle = 60, vjust = 0.6, hjust = 0.5))
+```
+From this graph, we can understand that a good portion of the used car market is comprised of cars priced below \$50,000. Furthermore, we see that the median used car value is just above \$15,000.
+
